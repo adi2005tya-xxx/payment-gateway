@@ -1,0 +1,376 @@
+{
+  "generatedAt": "2026-10-14T04:56:55.321Z",
+  "environment": {
+    "os": "win32 10.0.26200",
+    "cpus": 12,
+    "memGB": 8,
+    "node": "v22.15.0",
+    "postgres": "17.10"
+  },
+  "result": "ALL STEPS PASSED",
+  "steps": [
+    {
+      "scenario": "setup",
+      "name": "initialise primary cluster (archive_mode=on, encrypted WAL archive) and start it",
+      "ok": true,
+      "ms": 18673,
+      "detail": {
+        "startMs": 1167,
+        "version": "17.10"
+      }
+    },
+    {
+      "scenario": "setup",
+      "name": "apply migrations through the production PgDb driver and seed synthetic representative data",
+      "ok": true,
+      "ms": 5199,
+      "detail": {
+        "applied": [
+          "001_init.sql",
+          "002_mfa.sql",
+          "003_recovery.sql",
+          "004_upi_destinations.sql",
+          "005_ops.sql",
+          "006_bank_email.sql",
+          "007_phone_notifications.sql"
+        ],
+        "integrityChecks": 19
+      }
+    },
+    {
+      "scenario": "S2 database restart during a transaction",
+      "name": "uncommitted work vanishes after an immediate (crash) stop; committed data is untouched",
+      "ok": true,
+      "ms": 1722,
+      "detail": {
+        "crashStopStartMs": 1193
+      }
+    },
+    {
+      "scenario": "S1 application crash during webhook processing",
+      "name": "a crash after the ledger write but before commit leaves nothing; the retry applies the event exactly once",
+      "ok": true,
+      "ms": 1600,
+      "detail": {
+        "appliedExactlyOnce": true
+      }
+    },
+    {
+      "scenario": "backup",
+      "name": "physical base backup via pg_backup_start/stop + encrypted, checksummed container",
+      "ok": true,
+      "ms": 13753,
+      "detail": {
+        "copyMs": 7238,
+        "encryptMs": 6275,
+        "encryptedBytes": 34999626,
+        "files": 1464,
+        "keyId": "9425743d",
+        "startWal": "000000010000000000000003",
+        "stopWal": "000000010000000000000003"
+      }
+    },
+    {
+      "scenario": "backup security",
+      "name": "backup and WAL archive contain no plaintext business data; keys are stored outside both",
+      "ok": true,
+      "ms": 1108,
+      "detail": {
+        "filesScanned": 5
+      }
+    },
+    {
+      "scenario": "post-backup activity",
+      "name": "batch 1 (3 payments + 1 executed payout), then record the PITR target",
+      "ok": true,
+      "ms": 2233,
+      "detail": {
+        "targetTime": "2026-10-14 09:55:34.230103 +05:30",
+        "batch1": {
+          "payoutId": "eb006b9d-89c0-4b89-a57c-eda23d346255",
+          "payments": 3
+        }
+      }
+    },
+    {
+      "scenario": "post-backup activity",
+      "name": "batch 2 (more payments + executed payout), then force WAL archive and capture final archived state",
+      "ok": true,
+      "ms": 2202,
+      "detail": {
+        "batch2": {
+          "payoutId": "36bc3cf9-52b7-484b-897e-9f4b6cd28d3c",
+          "payments": 3
+        }
+      }
+    },
+    {
+      "scenario": "backup verification",
+      "name": "WAL archive is continuous from the backup start segment to the newest segment",
+      "ok": true,
+      "ms": 0,
+      "detail": {
+        "first": "000000010000000000000003",
+        "last": "000000010000000000000006",
+        "count": 6,
+        "gaps": []
+      }
+    },
+    {
+      "scenario": "disaster",
+      "name": "commit batch 3 (not archived), then destroy the primary immediately (data directory deleted, archive and backup survive)",
+      "ok": true,
+      "ms": 1026,
+      "detail": {
+        "lastCommitBeforeLoss": "2026-10-14 09:55:38 +05:30"
+      }
+    },
+    {
+      "scenario": "S5 restore into empty environment (PITR)",
+      "name": "restore to the recorded target time and verify against the snapshot taken at that moment",
+      "ok": true,
+      "ms": 19636,
+      "detail": {
+        "totalMs": 19292,
+        "extractMs": 8013,
+        "recoveryMs": 11279,
+        "verifyMs": 343,
+        "checks": 19
+      }
+    },
+    {
+      "scenario": "S6/S7 stale restore",
+      "name": "provider executed work the restored DB does not know: auto-detection, freeze, no duplicate payouts, release blocked",
+      "ok": true,
+      "ms": 272,
+      "detail": {
+        "autoDetected": true,
+        "report": {
+          "moneyOutFrozen": true,
+          "sessionsRevoked": 0,
+          "paymentsRecovered": 6,
+          "paymentErrors": 0,
+          "payoutsSynced": 2,
+          "payoutsHeldForReview": 0,
+          "payoutsQueuedNotSubmitted": 0,
+          "refundsPendingNotSubmitted": 0,
+          "reconciliationDiscrepancies": 3,
+          "reconciliationItems": [
+            {
+              "kind": "ORPHAN_PROVIDER_PAYOUT",
+              "subject": "pout_sbx_d8f19502"
+            },
+            {
+              "kind": "ORPHAN_PROVIDER_PAYOUT",
+              "subject": "pout_sbx_f2c4964a"
+            },
+            {
+              "kind": "PROVIDER_CLEARING_MISMATCH",
+              "subject": "PLATFORM:PROVIDER_CLEARING"
+            }
+          ]
+        },
+        "openReconciliationKinds": [
+          "ORPHAN_PROVIDER_PAYOUT",
+          "PROVIDER_CLEARING_MISMATCH"
+        ],
+        "unfreezeBlockedBy": "UNRESOLVED_PAYOUTS"
+      }
+    },
+    {
+      "scenario": "S3/S5 restore to latest archived state",
+      "name": "restore, measure RTO and the actual data loss (unarchived batch 3), verify against the pre-disaster archived state",
+      "ok": true,
+      "ms": 18264,
+      "detail": {
+        "totalMs": 18011,
+        "extractMs": 4810,
+        "recoveryMs": 13201,
+        "verifyMs": 250,
+        "checks": 19,
+        "batch3LostAsExpected": true
+      }
+    },
+    {
+      "scenario": "S3 worker restart with queued financial events",
+      "name": "jobs queued at backup time run exactly once on the restored database (while money-out is frozen)",
+      "ok": true,
+      "ms": 51,
+      "detail": {
+        "jobsBefore": [
+          {
+            "status": "DONE",
+            "n": 23
+          },
+          {
+            "status": "PENDING",
+            "n": 2
+          }
+        ],
+        "externalPayoutsCreated": 0
+      }
+    },
+    {
+      "scenario": "S7 pending refunds and unresolved reconciliation items after restore",
+      "name": "preserved by the restore; the pending refund completes exactly once by idempotent replay",
+      "ok": true,
+      "ms": 115,
+      "detail": {
+        "reconciliationItemsPreserved": 4,
+        "report": {
+          "moneyOutFrozen": true,
+          "sessionsRevoked": 0,
+          "paymentsRecovered": 3,
+          "paymentErrors": 0,
+          "payoutsSynced": 2,
+          "payoutsHeldForReview": 0,
+          "payoutsQueuedNotSubmitted": 0,
+          "refundsPendingNotSubmitted": 0,
+          "reconciliationDiscrepancies": 2,
+          "reconciliationItems": [
+            {
+              "kind": "ORPHAN_PROVIDER_PAYOUT",
+              "subject": "pout_sbx_f2c4964a"
+            },
+            {
+              "kind": "PROVIDER_CLEARING_MISMATCH",
+              "subject": "PLATFORM:PROVIDER_CLEARING"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "scenario": "S8 re-running the restoration",
+      "name": "restoring the same backup again into a fresh directory reproduces identical financial content; post-restore procedure re-run changes nothing posted",
+      "ok": true,
+      "ms": 15384,
+      "detail": {
+        "digestEqual": true,
+        "restoreMs": 14223
+      }
+    },
+    {
+      "scenario": "S4 corrupted or incomplete backup",
+      "name": "truncated base backup, bit-flipped backup, tampered backup with fixed checksum, missing sidecar: all rejected before any data is written",
+      "ok": true,
+      "ms": 1987,
+      "detail": {
+        "truncated": "backup failed integrity check: size mismatch: 20999775 != 34999626 (truncated or incomplete)",
+        "bitflip": "backup failed integrity check: SHA-256 mismatch (corrupted or tampered)",
+        "tampered-fixed-checksum": "Unsupported state or unable to authenticate data",
+        "missing-sidecar": "backup failed integrity check: sidecar manifest missing",
+        "non-empty-target": "refused"
+      }
+    },
+    {
+      "scenario": "S4 corrupted or incomplete backup",
+      "name": "a gap in the WAL archive is detected by the continuity check, and recovery to a target beyond the gap refuses to start",
+      "ok": true,
+      "ms": 9380,
+      "detail": {
+        "missingSegment": "000000010000000000000004.enc",
+        "detectedGaps": [
+          "000000010000000000000004"
+        ],
+        "recoveryRefused": true,
+        "note": "without a recovery target PostgreSQL would silently stop at the gap; the continuity check must run first"
+      }
+    },
+    {
+      "scenario": "restored application",
+      "name": "the full existing automated test suite passes against the restored PostgreSQL server",
+      "ok": true,
+      "ms": 1808836,
+      "detail": {
+        "exitCode": 0,
+        "tests": "Tests:       310 passed, 310 total",
+        "suites": "Test Suites: 14 passed, 14 total",
+        "ms": 1808828
+      }
+    }
+  ],
+  "metrics": {
+    "postgresVersion": "17.10",
+    "crashRecoveryMs": 1193,
+    "backup": {
+      "copyMs": 7238,
+      "encryptMs": 6275,
+      "encryptedBytes": 34999626,
+      "files": 1464,
+      "keyId": "9425743d",
+      "startWal": "000000010000000000000003",
+      "stopWal": "000000010000000000000003"
+    },
+    "securityFilesScanned": 5,
+    "wal": {
+      "first": "000000010000000000000003",
+      "last": "000000010000000000000006",
+      "count": 6,
+      "gaps": []
+    },
+    "batch3Payments": 2,
+    "batch3PayoutId": "ab043b4a-65b7-402a-8606-d0fa94ef2250",
+    "pitr": {
+      "totalMs": 19292,
+      "extractMs": 8013,
+      "recoveryMs": 11279,
+      "verifyMs": 343,
+      "checks": 19
+    },
+    "staleRestore": {
+      "autoDetected": true,
+      "report": {
+        "moneyOutFrozen": true,
+        "sessionsRevoked": 0,
+        "paymentsRecovered": 6,
+        "paymentErrors": 0,
+        "payoutsSynced": 2,
+        "payoutsHeldForReview": 0,
+        "payoutsQueuedNotSubmitted": 0,
+        "refundsPendingNotSubmitted": 0,
+        "reconciliationDiscrepancies": 3,
+        "reconciliationItems": [
+          {
+            "kind": "ORPHAN_PROVIDER_PAYOUT",
+            "subject": "pout_sbx_d8f19502"
+          },
+          {
+            "kind": "ORPHAN_PROVIDER_PAYOUT",
+            "subject": "pout_sbx_f2c4964a"
+          },
+          {
+            "kind": "PROVIDER_CLEARING_MISMATCH",
+            "subject": "PLATFORM:PROVIDER_CLEARING"
+          }
+        ]
+      },
+      "openReconciliationKinds": [
+        "ORPHAN_PROVIDER_PAYOUT",
+        "PROVIDER_CLEARING_MISMATCH"
+      ],
+      "unfreezeBlockedBy": "UNRESOLVED_PAYOUTS"
+    },
+    "latest": {
+      "totalMs": 18011,
+      "extractMs": 4810,
+      "recoveryMs": 13201,
+      "verifyMs": 250,
+      "checks": 19,
+      "batch3LostAsExpected": true
+    },
+    "rpo": {
+      "lastCommitBeforeLoss": "2026-10-14 09:55:38 +05:30",
+      "restoredThrough": "last archived WAL segment",
+      "unarchivedBatchLost": true,
+      "archiveTimeoutSeconds": 60
+    },
+    "suiteOnRestored": {
+      "exitCode": 0,
+      "tests": "Tests:       310 passed, 310 total",
+      "suites": "Test Suites: 14 passed, 14 total",
+      "ms": 1808828
+    },
+    "totalDrillMs": 1923928
+  }
+}

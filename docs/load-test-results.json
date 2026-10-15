@@ -1,0 +1,40 @@
+{
+  "measuredAt": "2026-10-13T05:31:08.173Z",
+  "config": {
+    "payments": 3000,
+    "merchants": 30,
+    "clientConcurrency": 32,
+    "workers": 12,
+    "pgPoolMax": 10
+  },
+  "ingest": {
+    "ms": 9583,
+    "perSec": 313.1,
+    "p50": 97,
+    "p95": 142.6,
+    "p99": 253.1,
+    "note": "payment request + webhook signature check + durable store + enqueue"
+  },
+  "verification": {
+    "ms": 22209,
+    "perSec": 135.1,
+    "succeeded": 3000,
+    "jobsLeft": 0,
+    "note": "provider lookup + matching + atomic ledger posting, competing workers"
+  },
+  "payouts": {
+    "ms": 537,
+    "merchants": 30,
+    "created": 30,
+    "succeeded": 30,
+    "p50": 151.7,
+    "p95": 213.9,
+    "note": "3 concurrent identical requests per merchant, then submission"
+  },
+  "correctness": {
+    "duplicateJournals": 0,
+    "integrityChecks": 18,
+    "integrityFailures": [],
+    "reconciliationDiscrepancies": 0
+  }
+}

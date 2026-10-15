@@ -1,0 +1,18 @@
+# Secrets: never commit these. Set them in the hosting provider's environment settings.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+
+# Local data, builds, logs
+node_modules/
+dist/
+.next/
+coverage/
+.data/
+.dr-work/
+e2e-output/
+*.log
+*.tsbuildinfo
