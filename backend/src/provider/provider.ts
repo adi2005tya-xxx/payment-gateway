@@ -102,6 +102,11 @@ export interface PaymentProvider {
   }): Promise<ProviderPayout>;
   getPayoutByReference(referenceId: string): Promise<ProviderPayout | null>;
 
+  /** Gateways with a browser-side custom checkout (razorpay.js): the PUBLIC key id the page may use. Never a secret. */
+  readonly customCheckoutKeyId?: string;
+  /** If the payment was only authorized (not auto-captured), captures it. Call only after the checkout signature was verified. */
+  captureIfAuthorized?(providerPaymentId: string): Promise<void>;
+
   /** Hosted-checkout gateways: verifies the signature the checkout hands the browser after payment (early UX signal only; money is confirmed via the status API). */
   verifyCheckoutReturn?(r: { orderId: string; paymentId: string; signature: string }): boolean;
 

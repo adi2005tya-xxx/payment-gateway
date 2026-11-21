@@ -100,6 +100,17 @@ export class PaymentRequestsService {
     return rows.length;
   }
 
+  /** What a browser-side custom checkout needs to start a payment for this link. Amount and order come from OUR record, never from the client. */
+  async checkoutParams(token: string) {
+    const [r] = await this.db.query<any>(
+      `SELECT r.amount_minor, r.currency, r.description, r.status, r.provider, r.provider_order_id, m.display_name AS merchant_name
+         FROM payment_requests r JOIN merchants m ON m.id = r.merchant_id WHERE r.public_token=$1`,
+      [token],
+    );
+    if (!r) throw new DomainError('NOT_FOUND', 'Payment link not found', 404);
+    return { provider: r.provider as string, status: r.status as string, orderId: r.provider_order_id as string, amountMinor: Number(r.amount_minor), currency: String(r.currency).trim(), merchantName: r.merchant_name as string, description: r.description as string };
+  }
+
   /** Public checkout view: only what a customer needs to see. */
   async publicView(token: string) {
     const [r] = await this.db.query<any>(

@@ -65,6 +65,14 @@ describe('Razorpay adapter', () => {
         payments.get(mr[1]).amount_refunded += b.amount;
         return { json: r };
       }
+      const mc = u.pathname.match(/^\/v1\/payments\/([^/]+)\/capture$/);
+      if (mc && c.method === 'POST') {
+        const b = JSON.parse(c.body);
+        const pay = payments.get(mc[1]);
+        if (!pay || b.amount !== pay.amount) return { status: 400, json: { error: { description: 'bad capture' } } };
+        pay.status = 'captured';
+        return { json: pay };
+      }
       const mp = u.pathname.match(/^\/v1\/payments\/([^/]+)$/);
       if (mp) return payments.has(mp[1]) ? { json: payments.get(mp[1]) } : { status: 400, json: { error: { description: 'The id provided does not exist' } } };
       return { status: 404, json: {} };
@@ -150,6 +158,24 @@ describe('Razorpay adapter', () => {
     expect(page.html).not.toContain(SECRET);
   });
 
+  it('captures an authorized payment explicitly, and leaves others alone', async () => {
+    const o = await order();
+    const p = pay(o.providerOrderId, 'authorized');
+    await rp.captureIfAuthorized(p.id);
+    expect((await rp.getPayment(p.id)).status).toBe('captured');
+    const failed = pay(o.providerOrderId, 'failed');
+    await rp.captureIfAuthorized(failed.id);
+    expect(payments.get(failed.id).status).toBe('failed');
+  });
+
+  it('exposes only the public key id and treats order.paid as a payment event', () => {
+    expect(rp.customCheckoutKeyId).toBe(KEY);
+    expect(JSON.stringify(Object.values(rp))).not.toContain(SECRET.slice(0, 6) + 'zzz'); // sanity: id getter is not the secret
+    expect(rp.customCheckoutKeyId).not.toBe(SECRET);
+    const w = signed('order.paid', { id: 'pay_5', order_id: 'order_5' });
+    expect(rp.parseWebhook(w.body)).toMatchObject({ type: 'payment.order_paid', providerPaymentId: 'pay_5' });
+  });
+
   it('refuses payouts instead of faking them', async () => {
     await expect(rp.createPayout()).rejects.toMatchObject({ code: 'PAYOUTS_UNSUPPORTED' });
   });
@@ -180,6 +206,16 @@ describe('Razorpay adapter', () => {
 
       // A forged webhook is rejected and stores nothing new.
       await expect(p.verification.ingestWebhook(w.body, 'forged')).rejects.toMatchObject({ code: 'INVALID_SIGNATURE' });
+    });
+
+    it('checkout params come from our own record, only for payable links', async () => {
+      const p = createPlatform(ctx.db, rp, ctx.security);
+      const c = { ...ctx, p } as Ctx;
+      const merchant = await seedMerchant(c);
+      const req = await createRequest(c, merchant, 12_345);
+      const cp = await p.requests.checkoutParams(req.public_token);
+      expect(cp).toMatchObject({ provider: 'razorpay', status: 'PENDING', amountMinor: 12_345, currency: 'INR', orderId: req.provider_order_id });
+      await expect(p.requests.checkoutParams('nope')).rejects.toMatchObject({ code: 'NOT_FOUND' });
     });
 
     it('a customer paying the wrong amount is held for review, not credited', async () => {

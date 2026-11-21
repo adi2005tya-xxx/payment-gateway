@@ -2,6 +2,7 @@
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { Badge, Button, ErrorBanner, Notice, useAction } from '@/components/ui';
+import { CheckoutParams, CustomCheckout } from '@/components/pay/CustomCheckout';
 import { api, inr, when } from '@/lib/api';
 
 interface PublicView {
@@ -23,6 +24,8 @@ export default function PayPage() {
   const [v, setV] = useState<PublicView | null>(null);
   const [err, setErr] = useState<unknown>(null);
   const sim = useAction();
+  // Custom (razorpay.js) checkout is offered only when the API says this link supports it; otherwise the page below is unchanged.
+  const [co, setCo] = useState<CheckoutParams | 'none' | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -36,6 +39,10 @@ export default function PayPage() {
   useEffect(() => {
     void load();
   }, [load]);
+  useEffect(() => {
+    if (v?.status !== 'AWAITING_PAYMENT' || co !== null) return;
+    api.get<CheckoutParams>(`/public/pay/${encodeURIComponent(token)}/checkout`, { token: null }).then(setCo).catch(() => setCo('none'));
+  }, [v?.status, co, token]);
   useEffect(() => {
     if (v?.status !== 'AWAITING_PAYMENT' && v?.status !== 'UNDER_REVIEW') return;
     const t = setInterval(load, 4000);
@@ -61,7 +68,9 @@ export default function PayPage() {
             {v.status === 'CANCELLED' && <Notice tone="amber">This payment request was cancelled by the merchant. Do not pay it.</Notice>}
             {v.status === 'UNDER_REVIEW' && <Notice>We received a payment for this request and are checking it. This can take a little while; you do not need to pay again.</Notice>}
 
-            {v.status === 'AWAITING_PAYMENT' && (
+            {v.status === 'AWAITING_PAYMENT' && co !== null && co !== 'none' && <CustomCheckout params={co} onSubmitted={load} />}
+            {v.status === 'AWAITING_PAYMENT' && co === null && <p className="mt-5 text-sm text-slate-500">Loading…</p>}
+            {v.status === 'AWAITING_PAYMENT' && co === 'none' && (
               <div className="mt-5">
                 {v.qrImage && (
                   // eslint-disable-next-line @next/next/no-img-element

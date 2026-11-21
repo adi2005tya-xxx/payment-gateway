@@ -117,6 +117,18 @@ export class PublicController {
     return { ...v, qrPayload: undefined, payLink: v.qrPayload?.startsWith('upi://') ? v.qrPayload : undefined, qrImage: v.qrPayload ? await this.qr(v.qrPayload) : undefined };
   }
 
+  /** Parameters for a custom (razorpay.js) checkout. Only the public key id leaves the server. */
+  @Get('public/pay/:token/checkout')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  async checkoutParams(@Param('token') token: string) {
+    const p = this.p.provider;
+    if (!p.customCheckoutKeyId) throw new DomainError('NOT_FOUND', 'Custom checkout is not available', 404);
+    const c = await this.p.requests.checkoutParams(token);
+    if (c.provider !== p.name) throw new DomainError('NOT_FOUND', 'Custom checkout is not available', 404);
+    if (c.status !== 'PENDING') throw new DomainError('NOT_PAYABLE', 'This payment request can no longer be paid', 409);
+    return { keyId: p.customCheckoutKeyId, orderId: c.orderId, amountMinor: c.amountMinor, currency: c.currency, merchantName: c.merchantName, description: c.description };
+  }
+
   private async qr(payload: string) {
     validateQrPayload(payload);
     return QRCode.toDataURL(payload, { errorCorrectionLevel: 'M', margin: 2 });
@@ -143,6 +155,7 @@ export class PublicController {
 
   /** Razorpay-style checkout return: verifies the HMAC signature, then asks the provider (not the browser) for the payment's real state. */
   @Post('pay/:provider/verify')
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   async verifyCheckout(@Param('provider') provider: string, @Body() body: unknown) {
     const p = this.p.provider;
     if (provider !== p.name || !p.verifyCheckoutReturn) throw new DomainError('NOT_FOUND', 'Not found', 404);
@@ -150,6 +163,9 @@ export class PublicController {
     if (!p.verifyCheckoutReturn(b)) throw new DomainError('INVALID_SIGNATURE', 'Payment signature mismatch', 400);
     let status = 'pending';
     try {
+      await p.captureIfAuthorized?.(b.paymentId).catch((e) => {
+        if (e instanceof TransientError) throw e; // anything else: leave it authorized; the status lookup below reports it as pending
+      });
       const pp = await p.getPayment(b.paymentId);
       if (pp.orderId === b.orderId) {
         await this.p.verification.applyProviderPayment(pp);

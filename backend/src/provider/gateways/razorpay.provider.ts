@@ -32,6 +32,17 @@ export class RazorpayProvider extends HostedGatewayProvider {
     this.f = o.fetch ?? fetch;
   }
 
+  get customCheckoutKeyId(): string {
+    return this.o.keyId;
+  }
+
+  async captureIfAuthorized(id: string): Promise<void> {
+    const r = await this.req('GET', `/v1/payments/${encodeURIComponent(id)}`);
+    if (r.status !== 200 || r.json?.status !== 'authorized') return;
+    const c = await this.req('POST', `/v1/payments/${encodeURIComponent(id)}/capture`, { amount: r.json.amount, currency: r.json.currency });
+    if (c.status !== 200) this.reject(c);
+  }
+
   private headers() {
     return { authorization: 'Basic ' + Buffer.from(`${this.o.keyId}:${this.o.keySecret}`).toString('base64'), 'content-type': 'application/json' };
   }
@@ -112,7 +123,7 @@ export class RazorpayProvider extends HostedGatewayProvider {
     if (!j || typeof j.event !== 'string') throw new Error('malformed webhook');
     const pay = j.payload?.payment?.entity;
     // Razorpay's body has no event id; event + payment id + creation time is stable across its redeliveries.
-    return { eventId: `${j.event}:${pay?.id ?? 'none'}:${j.created_at ?? 0}`, type: j.event, providerPaymentId: pay?.id, providerOrderId: pay?.order_id };
+    return { eventId: `${j.event}:${pay?.id ?? 'none'}:${j.created_at ?? 0}`, type: j.event === 'order.paid' ? 'payment.order_paid' : j.event, providerPaymentId: pay?.id, providerOrderId: pay?.order_id };
   }
 
   async createRefund(i: { providerPaymentId: string; amountMinor: number; idempotencyKey: string }) {
