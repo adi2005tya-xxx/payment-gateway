@@ -33,7 +33,7 @@
     "zod": "^4.6.6"
   },
   "devDependencies": {
-    "@nestjs/testing": "^11.2.7",
+    "@nestjs/testing": "^12.5.1",
     "@types/express": "^5.0.6",
     "@types/jest": "^30.0.0",
     "@types/mailparser": "^3.9.0",
