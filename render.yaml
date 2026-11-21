@@ -6,12 +6,15 @@ services:
     runtime: node
     rootDir: backend
     plan: free # free instances sleep after inactivity; use a paid plan before relying on webhooks
-    buildCommand: npm ci && npm run build
+    # NODE_ENV=production makes npm skip devDependencies, but the TypeScript build needs them.
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm run start:prod
     healthCheckPath: /pay/done
     envVars:
       - key: NODE_ENV
         value: production
+      - key: NODE_VERSION
+        value: 22
       - key: PAYMENT_MODE
         value: sandbox
       - key: PROVIDER_KIND
