@@ -17,6 +17,16 @@ export type ApplyResult =
  * The payment verification engine. Customer-side success, screenshots and webhook payloads are never trusted:
  * a webhook only *triggers* verification, and the decision is made from the provider's current payment record.
  */
+/** The payload column is JSON. JSON bodies are stored as-is; anything else (e.g. Paytm's form-encoded notification) is stored as a JSON string and read back verbatim. */
+function storablePayload(raw: string): string {
+  try {
+    JSON.parse(raw);
+    return raw;
+  } catch {
+    return JSON.stringify(raw);
+  }
+}
+
 export class VerificationService {
   constructor(
     private readonly db: Db,
@@ -42,7 +52,7 @@ export class VerificationService {
       const rows = await tx.query<{ id: string }>(
         `INSERT INTO webhook_events(provider, provider_event_id, event_type, payload) VALUES ($1,$2,$3,$4)
          ON CONFLICT (provider, provider_event_id) DO NOTHING RETURNING id`,
-        [this.provider.name, parsed.eventId, parsed.type, rawBody],
+        [this.provider.name, parsed.eventId, parsed.type, storablePayload(rawBody)],
       );
       if (rows.length === 0) return { accepted: true as const, duplicate: true };
       await this.jobs.enqueue(tx, 'process_webhook', { webhookEventId: rows[0].id }, { dedupeKey: `webhook:${rows[0].id}` });

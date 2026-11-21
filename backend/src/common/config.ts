@@ -16,7 +16,19 @@ const schema = z.object({
   PROVIDER_WEBHOOK_SECRET: z.string().min(16),
   PUBLIC_BASE_URL: z.string().default('http://localhost:3001'),
   /** sandbox: card/UPI-gateway style simulator. owner-account-sandbox: simulated owner bank account (customers pay the owner's UPI ID, payouts to merchants' UPI IDs). */
-  PROVIDER_KIND: z.enum(['sandbox', 'owner-account-sandbox', 'bank-email']).default('sandbox'),
+  PROVIDER_KIND: z.enum(['sandbox', 'owner-account-sandbox', 'bank-email', 'razorpay', 'phonepe', 'paytm']).default('sandbox'),
+  /** razorpay / phonepe / paytm: real provider APIs in TEST mode only (see docs/payment-gateways.md). */
+  RAZORPAY_KEY_ID: z.string().default(''),
+  RAZORPAY_KEY_SECRET: z.string().default(''),
+  RAZORPAY_WEBHOOK_SECRET: z.string().default(''),
+  PHONEPE_MERCHANT_ID: z.string().default(''),
+  PHONEPE_SALT_KEY: z.string().default(''),
+  PHONEPE_SALT_INDEX: z.string().default('1'),
+  PHONEPE_BASE_URL: z.string().default('https://api-preprod.phonepe.com/apis/pg-sandbox'),
+  PAYTM_MID: z.string().default(''),
+  PAYTM_MERCHANT_KEY: z.string().default(''),
+  PAYTM_WEBSITE: z.string().default('WEBSTAGING'),
+  PAYTM_BASE_URL: z.string().default('https://securestage.paytmpayments.com'),
   /** Public UPI ID customers pay (appears in QR codes). Not a secret. */
   OWNER_UPI_ID: z.string().regex(/^[a-z0-9][a-z0-9._-]{1,63}@[a-z][a-z0-9]{1,31}$/, 'OWNER_UPI_ID must look like name@bank').default('gateway-sandbox@sandboxbank'),
   /** bank-email mode: Google OAuth client (create it in Google Cloud Console; scope gmail.readonly only). */
@@ -70,6 +82,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
         'See docs/provider-integration-checklist.md and docs/regulatory-checklist.md.',
     );
   }
+  const need: Record<string, string[]> = {
+    razorpay: ['RAZORPAY_KEY_ID', 'RAZORPAY_KEY_SECRET', 'RAZORPAY_WEBHOOK_SECRET'],
+    phonepe: ['PHONEPE_MERCHANT_ID', 'PHONEPE_SALT_KEY'],
+    paytm: ['PAYTM_MID', 'PAYTM_MERCHANT_KEY'],
+  };
+  const missing = (need[cfg.PROVIDER_KIND] ?? []).filter((k) => !(cfg as Record<string, unknown>)[k]);
+  if (missing.length) throw new Error(`PROVIDER_KIND=${cfg.PROVIDER_KIND} requires: ${missing.join(', ')}`);
   if (cfg.PROVIDER_KIND === 'bank-email' && !cfg.GOOGLE_CLIENT_ID !== !cfg.GOOGLE_CLIENT_SECRET) throw new Error('GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set together');
   if (cfg.GOOGLE_CLIENT_ID && !/^https?:\/\//.test(cfg.GOOGLE_REDIRECT_URI)) throw new Error('GOOGLE_REDIRECT_URI must be an http(s) URL');
   if (!cfg.MFA_REQUIRED_ROLES.split(',').map((r) => r.trim()).includes('ADMIN')) throw new Error('MFA_REQUIRED_ROLES must include ADMIN');

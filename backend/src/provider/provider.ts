@@ -102,6 +102,12 @@ export interface PaymentProvider {
   }): Promise<ProviderPayout>;
   getPayoutByReference(referenceId: string): Promise<ProviderPayout | null>;
 
+  /** Hosted-checkout gateways: verifies the signature the checkout hands the browser after payment (early UX signal only; money is confirmed via the status API). */
+  verifyCheckoutReturn?(r: { orderId: string; paymentId: string; signature: string }): boolean;
+
+  /** Hosted-checkout gateways: renders the page a customer pays on (served by the API at GET /pay/:provider/:orderId). */
+  renderCheckoutPage?(orderId: string, query: Record<string, string>): Promise<{ html: string; csp: string }>;
+
   /** Provider-side records for reconciliation (settlement/transaction report equivalents). */
   listPayments(): Promise<ProviderPayment[]>;
   listPayouts(): Promise<ProviderPayout[]>;

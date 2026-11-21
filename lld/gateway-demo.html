@@ -1,0 +1,240 @@
+<title>Gateway Console</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: two columns (payment form | live trace + history), stacking on phones. */
+:root {
+  --bg: #f4f6f8; --surface: #ffffff; --line: #dde3ea; --fg: #17202b; --muted: #5d6b7a;
+  --accent: #0f6b6b; --accent-fg: #ffffff; --accent-soft: #e0f0ef;
+  --ok: #15803d; --ok-soft: #e1f4e7; --warn: #a16207; --warn-soft: #fbf0d3; --bad: #b42318; --bad-soft: #fde7e4;
+  --font: "Inter", system-ui, sans-serif; --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f151b; --surface: #171f27; --line: #2a3541; --fg: #e6ebf0; --muted: #94a3b3;
+  --accent: #4fc3bd; --accent-fg: #06201f; --accent-soft: #14312f;
+  --ok: #4ade80; --ok-soft: #12301d; --warn: #facc15; --warn-soft: #34290a; --bad: #f87171; --bad-soft: #3a1714; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0f151b; --surface: #171f27; --line: #2a3541; --fg: #e6ebf0; --muted: #94a3b3;
+  --accent: #4fc3bd; --accent-fg: #06201f; --accent-soft: #14312f;
+  --ok: #4ade80; --ok-soft: #12301d; --warn: #facc15; --warn-soft: #34290a; --bad: #f87171; --bad-soft: #3a1714; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 14px/1.5 var(--font); padding-block: 24px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.wrap { max-width: 1080px; margin: 0 auto; display: grid; gap: 20px; }
+header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+h1 { font-size: 20px; margin: 0; letter-spacing: -0.01em; }
+.sub { color: var(--muted); margin: 2px 0 0; }
+.badge { font: 500 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; padding: 3px 8px; border-radius: 4px; background: var(--warn-soft); color: var(--warn); }
+.cols { display: grid; grid-template-columns: minmax(0, 360px) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 800px) { .cols { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: grid; gap: 14px; min-width: 0; }
+h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0; font-weight: 600; }
+label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); font-weight: 500; }
+input, select { font: 14px var(--font); color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; width: 100%; min-width: 0; }
+input[type=range] { padding: 0; accent-color: var(--accent); }
+input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.seg { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.seg button { border: 0; background: var(--bg); color: var(--muted); padding: 9px; font: 500 14px var(--font); cursor: pointer; }
+.seg button[aria-pressed=true] { background: var(--accent-soft); color: var(--accent); }
+.seg small { display: block; font: 400 11px var(--mono); }
+.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+button.primary, button.ghost { font: 600 14px var(--font); border-radius: 6px; padding: 10px; cursor: pointer; }
+button.primary { background: var(--accent); color: var(--accent-fg); border: 1px solid var(--accent); grid-column: 1 / -1; }
+button.ghost { background: transparent; color: var(--fg); border: 1px solid var(--line); }
+button.ghost:hover { background: var(--bg); }
+.hint { font-size: 12px; color: var(--muted); margin: 0; }
+.result { display: grid; gap: 4px; padding: 12px; border-radius: 6px; }
+.result.ok { background: var(--ok-soft); color: var(--ok); } .result.bad { background: var(--bad-soft); color: var(--bad); } .result.idle { background: var(--bg); color: var(--muted); }
+.result b { font-size: 16px; } .result span { font: 12px var(--mono); }
+ol.trace { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; font: 12.5px/1.45 var(--mono); max-height: 340px; overflow: auto; }
+.trace li { display: grid; grid-template-columns: 74px 1fr; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--line); min-width: 0; overflow-wrap: anywhere; }
+.trace li:last-child { border-bottom: 0; }
+.tag { font-weight: 500; color: var(--muted); }
+.t-ok .tag { color: var(--ok); } .t-bad .tag { color: var(--bad); } .t-warn .tag { color: var(--warn); } .t-info .tag { color: var(--accent); }
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; min-width: 520px; }
+th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+td { padding: 7px 8px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+td.m { font-family: var(--mono); font-size: 12px; }
+.pill { font: 500 11px var(--mono); padding: 2px 7px; border-radius: 10px; white-space: nowrap; }
+.pill.ok { background: var(--ok-soft); color: var(--ok); } .pill.bad { background: var(--bad-soft); color: var(--bad); } .pill.warn { background: var(--warn-soft); color: var(--warn); }
+.stats { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+.stats b { color: var(--fg); font-variant-numeric: tabular-nums; }
+.empty { color: var(--muted); padding: 14px 0; }
+@media (prefers-reduced-motion: no-preference) { .result { transition: background .2s; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Gateway Console</h1>
+      <p class="sub">Paytm and Razorpay behind one API: validation, bank call, confirmation, retry proxy, idempotency.</p>
+    </div>
+    <span class="badge">Simulation, no real money</span>
+  </header>
+
+  <div class="cols">
+    <form class="panel" id="form" autocomplete="off">
+      <h2>New payment</h2>
+      <div class="seg" role="group" aria-label="Gateway">
+        <button type="button" id="g-paytm" aria-pressed="true">Paytm<small>INR only · 3 attempts</small></button>
+        <button type="button" id="g-razorpay" aria-pressed="false">Razorpay<small>any currency · 1 attempt</small></button>
+      </div>
+      <div class="row">
+        <label for="sender">Sender<input id="sender" value="Aditya"></label>
+        <label for="receiver">Receiver<input id="receiver" value="Shubham"></label>
+      </div>
+      <div class="row">
+        <label for="amount">Amount<input id="amount" type="number" step="0.01" min="0" value="1000.00"></label>
+        <label for="currency">Currency<select id="currency"><option>INR</option><option>USD</option></select></label>
+      </div>
+      <label for="key">Idempotency key<input id="key" class="mono" style="font-family:var(--mono)"></label>
+      <label for="rate">Bank success rate: <span id="rate-val"></span>
+        <input id="rate" type="range" min="0" max="100" step="5"></label>
+      <div class="actions">
+        <button class="primary" type="submit">Pay</button>
+        <button class="ghost" type="button" id="again">Send same key again</button>
+        <button class="ghost" type="button" id="burst">Run 20 payments</button>
+      </div>
+      <p class="hint">Try USD on Paytm: it fails validation once and is not retried. Send the same key twice: the second call is replayed, not charged.</p>
+    </form>
+
+    <div style="display:grid;gap:20px;min-width:0">
+      <section class="panel">
+        <h2>Result</h2>
+        <div class="result idle" id="result"><b>No payment yet</b><span>Press Pay to see the outcome and the step-by-step trace.</span></div>
+        <h2>Trace</h2>
+        <ol class="trace" id="trace"></ol>
+      </section>
+      <section class="panel">
+        <h2>Payments</h2>
+        <div class="stats" id="stats"></div>
+        <div class="tablewrap"><table>
+          <thead><tr><th>Txn</th><th>Gateway</th><th>Amount</th><th>Attempts</th><th>Status</th><th>Key</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table></div>
+        <div class="empty" id="empty">Payments you make appear here.</div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+// Mirrors lld/PaymentGatewayApplication.java: same rules, same statuses.
+const $ = id => document.getElementById(id);
+const GW = { paytm: { name: 'Paytm', attempts: 3, currencies: ['INR'] }, razorpay: { name: 'Razorpay', attempts: 1, currencies: null } };
+let gateway = 'paytm', seq = 0, keySeq = 0;
+const done = new Map();          // idempotency key -> result
+const history = [];              // newest first
+let trace = [];
+
+const fmt = (paise, cur) => (paise / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + cur;
+const log = (tag, cls, text) => trace.push({ tag, cls, text });
+const newKey = () => 'pay-' + String(++keySeq).padStart(4, '0');
+
+function validate(g, r) {
+  if (!(r.amountPaise > 0)) return 'amount must be positive';
+  if (!r.sender || !r.receiver) return 'sender and receiver are required';
+  if (r.sender === r.receiver) return 'sender and receiver must differ';
+  if (GW[g].currencies && !GW[g].currencies.includes(r.currency)) return GW[g].name + ' does not accept ' + r.currency;
+  return null;
+}
+
+// One attempt = Template Method: validate -> bank -> confirm.
+function attempt(g, r, rate) {
+  const err = validate(g, r);
+  if (err) { log(GW[g].name, 't-bad', 'validation failed: ' + err); return 'VALIDATION_FAILED'; }
+  log(GW[g].name, 't-info', 'charging ' + fmt(r.amountPaise, r.currency) + ' for ' + r.sender);
+  if (Math.random() * 100 >= rate) { log('Bank', 't-warn', 'declined'); return 'DECLINED'; }
+  log('Bank', 't-ok', 'approved');
+  log(GW[g].name, 't-ok', 'confirmed');
+  return 'SUCCESS';
+}
+
+// Proxy: retry only DECLINED.
+function process(g, r, rate) {
+  if (done.has(r.key)) {
+    log('Service', 't-info', 'key ' + r.key + ' already processed, replaying ' + done.get(r.key).txn + ' (no charge)');
+    return { ...done.get(r.key), replay: true };
+  }
+  const txn = GW[g].name + '-' + (++seq);
+  let status = 'DECLINED', n = 0;
+  while (n < GW[g].attempts) {
+    n++;
+    if (n > 1) log('Proxy', 't-warn', 'retry ' + n + '/' + GW[g].attempts);
+    status = attempt(g, r, rate);
+    if (status !== 'DECLINED') break;
+  }
+  if (status === 'DECLINED' && n > 1) log('Proxy', 't-bad', 'gave up after ' + n + ' attempts');
+  const res = { txn, status, attempts: n, gateway: g, r };
+  done.set(r.key, res);
+  history.unshift(res);
+  return res;
+}
+
+function readForm() {
+  return { key: $('key').value.trim() || newKey(), sender: $('sender').value.trim(), receiver: $('receiver').value.trim(),
+           amountPaise: Math.round(parseFloat($('amount').value || '0') * 100), currency: $('currency').value };
+}
+
+function run(r) {
+  trace = [];
+  const res = process(gateway, r, +$('rate').value);
+  render(res);
+  return res;
+}
+
+function render(res) {
+  const el = $('result');
+  if (res) {
+    const ok = res.status === 'SUCCESS';
+    el.className = 'result ' + (ok ? 'ok' : 'bad');
+    const title = ok ? 'Payment successful' : res.status === 'DECLINED' ? 'Bank declined' : 'Rejected before reaching the bank';
+    el.innerHTML = '';
+    const b = document.createElement('b'); b.textContent = title + (res.replay ? ' (replayed)' : '');
+    const s = document.createElement('span'); s.textContent = res.txn + ' · ' + res.status + ' · ' + res.attempts + ' attempt' + (res.attempts === 1 ? '' : 's');
+    el.append(b, s);
+  }
+  const t = $('trace'); t.innerHTML = '';
+  for (const e of trace) {
+    const li = document.createElement('li'); li.className = e.cls;
+    const a = document.createElement('span'); a.className = 'tag'; a.textContent = e.tag;
+    const b = document.createElement('span'); b.textContent = e.text;
+    li.append(a, b); t.append(li);
+  }
+  const rows = $('rows'); rows.innerHTML = '';
+  for (const h of history.slice(0, 30)) {
+    const tr = document.createElement('tr');
+    const cells = [h.txn, GW[h.gateway].name, fmt(h.r.amountPaise, h.r.currency), h.attempts];
+    cells.forEach((c, i) => { const td = document.createElement('td'); if (i === 0) td.className = 'm'; td.textContent = c; tr.append(td); });
+    const st = document.createElement('td'); const p = document.createElement('span');
+    p.className = 'pill ' + (h.status === 'SUCCESS' ? 'ok' : h.status === 'DECLINED' ? 'warn' : 'bad'); p.textContent = h.status; st.append(p);
+    const k = document.createElement('td'); k.className = 'm'; k.textContent = h.r.key;
+    tr.append(st, k); rows.append(tr);
+  }
+  $('empty').hidden = history.length > 0;
+  const ok = history.filter(h => h.status === 'SUCCESS').length;
+  $('stats').innerHTML = history.length ? '<span>Total <b>' + history.length + '</b></span><span>Succeeded <b>' + ok + '</b></span><span>Failed <b>' + (history.length - ok) + '</b></span>' : '';
+}
+
+function setGateway(g) {
+  gateway = g;
+  $('g-paytm').setAttribute('aria-pressed', g === 'paytm');
+  $('g-razorpay').setAttribute('aria-pressed', g === 'razorpay');
+  $('rate').value = g === 'paytm' ? 80 : 90; $('rate-val').textContent = $('rate').value + '%';
+}
+
+$('g-paytm').onclick = () => setGateway('paytm');
+$('g-razorpay').onclick = () => setGateway('razorpay');
+$('rate').oninput = () => $('rate-val').textContent = $('rate').value + '%';
+$('form').onsubmit = e => { e.preventDefault(); const r = readForm(); run(r); $('key').value = newKey(); };
+$('again').onclick = () => { const k = (history[0] && history[0].r.key) || $('key').value; const r = readForm(); r.key = k; run(r); };
+$('burst').onclick = () => {
+  let last;
+  for (let i = 0; i < 20; i++) { const r = readForm(); r.key = newKey(); r.sender = 'User' + (i + 1); last = run(r); }
+  $('key').value = newKey();
+};
+
+setGateway('paytm'); $('key').value = newKey(); render(null);
+</script>

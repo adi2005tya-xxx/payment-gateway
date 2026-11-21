@@ -112,7 +112,12 @@ export class RecoveryService {
     // Inbound only: payments the provider captured after the backup point are applied through the normal, idempotent path.
     let paymentsRecovered = 0;
     let paymentErrors = 0;
-    for (const pp of await this.provider.listPayments()) {
+    // A provider with no transaction-report API (PhonePe, Paytm) cannot be swept: its payments arrive through webhooks/status lookups only.
+    const remote = await this.provider.listPayments().catch((e) => {
+      if (e instanceof DomainError && e.code === 'CAPABILITY_UNAVAILABLE') return [];
+      throw e;
+    });
+    for (const pp of remote) {
       if (pp.status !== 'captured') continue;
       const [known] = await this.db.query('SELECT 1 FROM payments WHERE provider=$1 AND provider_payment_id=$2', [this.provider.name, pp.id]);
       if (known) continue;

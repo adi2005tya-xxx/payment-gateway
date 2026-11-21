@@ -13,6 +13,10 @@ import { SandboxProvider } from './provider/sandbox.provider';
 import { SandboxBankAccountProvider } from './provider/sandbox-bank.provider';
 import { BankEmailProvider } from './provider/bank-email.provider';
 import { GOOGLE_DEFAULTS } from './bankmail/gmail';
+import { PaymentProvider } from './provider/provider';
+import { RazorpayProvider } from './provider/gateways/razorpay.provider';
+import { PhonePeProvider } from './provider/gateways/phonepe.provider';
+import { PaytmProvider } from './provider/gateways/paytm.provider';
 
 async function main() {
   const cfg = loadConfig();
@@ -24,9 +28,17 @@ async function main() {
   }
   console.log('migrations applied:', await migrate(db));
 
-  // Only the sandbox adapter exists. A real adapter must be added (and PAYMENT_MODE=live unlocked) per docs/provider-integration-checklist.md.
-  const provider =
-    cfg.PROVIDER_KIND === 'bank-email'
+  // razorpay/phonepe/paytm talk to the real provider APIs in TEST mode only (docs/payment-gateways.md). PAYMENT_MODE=live stays blocked.
+  const resolveMerchantRef = async (orderId: string) =>
+    (await db.query<{ merchant_id: string }>('SELECT merchant_id FROM payment_requests WHERE provider_order_id=$1', [orderId]))[0]?.merchant_id ?? null;
+  const provider: PaymentProvider =
+    cfg.PROVIDER_KIND === 'razorpay'
+      ? new RazorpayProvider({ keyId: cfg.RAZORPAY_KEY_ID, keySecret: cfg.RAZORPAY_KEY_SECRET, webhookSecret: cfg.RAZORPAY_WEBHOOK_SECRET, publicBaseUrl: cfg.PUBLIC_BASE_URL })
+      : cfg.PROVIDER_KIND === 'phonepe'
+      ? new PhonePeProvider({ merchantId: cfg.PHONEPE_MERCHANT_ID, saltKey: cfg.PHONEPE_SALT_KEY, saltIndex: cfg.PHONEPE_SALT_INDEX, baseUrl: cfg.PHONEPE_BASE_URL, publicBaseUrl: cfg.PUBLIC_BASE_URL, resolveMerchantRef })
+      : cfg.PROVIDER_KIND === 'paytm'
+      ? new PaytmProvider({ mid: cfg.PAYTM_MID, merchantKey: cfg.PAYTM_MERCHANT_KEY, website: cfg.PAYTM_WEBSITE, baseUrl: cfg.PAYTM_BASE_URL, publicBaseUrl: cfg.PUBLIC_BASE_URL, resolveMerchantRef })
+      : cfg.PROVIDER_KIND === 'bank-email'
       ? new BankEmailProvider(db, cfg.PUBLIC_BASE_URL, cfg.ORDER_DEFAULT_EXPIRY_MINUTES, cfg.ORDER_GRACE_MINUTES)
       : cfg.PROVIDER_KIND === 'owner-account-sandbox'
       ? new SandboxBankAccountProvider(cfg.PROVIDER_WEBHOOK_SECRET, cfg.PUBLIC_BASE_URL, cfg.OWNER_UPI_ID, { openingBalanceMinor: cfg.OWNER_OPENING_BALANCE_MINOR, upiPayoutLimitMinor: cfg.UPI_PAYOUT_LIMIT_MINOR })

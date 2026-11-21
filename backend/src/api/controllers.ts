@@ -7,7 +7,7 @@ import { JwtService } from '@nestjs/jwt';
 import { z, ZodError, ZodType } from 'zod';
 import * as QRCode from 'qrcode';
 import { AllowPendingMfa, AuthGuard, AuthUser, hashPassword, JWT, PLATFORM, RATE_LIMITS, Roles, StepUp, validatePasswordStrength } from '../auth/auth';
-import { DomainError } from '../common/errors';
+import { DomainError, TransientError } from '../common/errors';
 import { Platform } from '../platform';
 import { SandboxProvider } from '../provider/sandbox.provider';
 import { SandboxBankAccountProvider } from '../provider/sandbox-bank.provider';
@@ -125,10 +125,56 @@ export class PublicController {
   /** Provider webhook endpoint. Signature is verified over the exact raw body; 2xx only after durable storage. */
   @Post('webhooks/:provider')
   @SkipThrottle()
-  async webhook(@Param('provider') provider: string, @Req() req: RawBodyRequest<any>, @Headers('x-gateway-signature') sig?: string) {
+  async webhook(@Param('provider') provider: string, @Req() req: RawBodyRequest<any>, @Headers() headers: Record<string, string | undefined>) {
+    const sig = headers['x-gateway-signature'] ?? headers['x-razorpay-signature'] ?? headers['x-verify']; // Razorpay / PhonePe send theirs in their own header; Paytm signs inside the body
     if (provider !== this.p.provider.name) throw new DomainError('UNKNOWN_PROVIDER', 'Unknown provider', 404);
     if (!req.rawBody) throw new DomainError('MALFORMED_EVENT', 'Empty body', 400);
     return this.p.verification.ingestWebhook(req.rawBody.toString('utf8'), sig);
+  }
+
+  /** Where a customer lands after paying at a hosted gateway. It never confirms payment: only the verified webhook/status lookup does. */
+  @Get('pay/done')
+  @Post('pay/done')
+  @Header('Content-Type', 'text/html; charset=utf-8')
+  @Header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'")
+  payDone() {
+    return '<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>Payment submitted</title><body style="font:16px system-ui;max-width:420px;margin:12vh auto;padding:0 16px"><h1>Thanks</h1><p>Your payment was submitted. The merchant is notified once the payment is confirmed with the provider.</p>';
+  }
+
+  /** Razorpay-style checkout return: verifies the HMAC signature, then asks the provider (not the browser) for the payment's real state. */
+  @Post('pay/:provider/verify')
+  async verifyCheckout(@Param('provider') provider: string, @Body() body: unknown) {
+    const p = this.p.provider;
+    if (provider !== p.name || !p.verifyCheckoutReturn) throw new DomainError('NOT_FOUND', 'Not found', 404);
+    const b = parse(z.object({ orderId: z.string().min(1).max(100), paymentId: z.string().min(1).max(100), signature: z.string().min(1).max(200) }), body);
+    if (!p.verifyCheckoutReturn(b)) throw new DomainError('INVALID_SIGNATURE', 'Payment signature mismatch', 400);
+    let status = 'pending';
+    try {
+      const pp = await p.getPayment(b.paymentId);
+      if (pp.orderId === b.orderId) {
+        await this.p.verification.applyProviderPayment(pp);
+        status = pp.status;
+      }
+    } catch (e) {
+      // Not final yet (or provider briefly down): the webhook / retry path will settle it. The signature itself is valid.
+      if (!(e instanceof TransientError)) throw e;
+    }
+    return { verified: true, status };
+  }
+
+  /** Hosted checkout page for a real gateway (Razorpay/Paytm). PhonePe redirects to its own page instead. */
+  @Get('pay/:provider/:orderId')
+  async hostedCheckout(@Param('provider') provider: string, @Param('orderId') orderId: string, @Query() query: Record<string, string>, @Res() res: any) {
+    const p = this.p.provider;
+    if (provider !== p.name || !p.renderCheckoutPage || !/^[A-Za-z0-9_-]{4,80}$/.test(orderId)) throw new DomainError('NOT_FOUND', 'Not found', 404);
+    let page;
+    try {
+      page = await p.renderCheckoutPage(orderId, query);
+    } catch (e: any) {
+      if (e instanceof TransientError) throw new DomainError('PROVIDER_UNAVAILABLE', 'Payment provider unavailable, try again shortly', 503);
+      throw new DomainError('NOT_FOUND', 'Not found', 404);
+    }
+    res.set({ 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': page.csp, 'Referrer-Policy': 'no-referrer' }).send(page.html);
   }
 
   // ---- Sandbox-only customer simulation. Absent entirely when the provider is not the sandbox.
