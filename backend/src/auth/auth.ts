@@ -13,6 +13,7 @@ export interface AuthUser extends Actor {
 }
 
 export const PLATFORM = Symbol('PLATFORM');
+export const DEMO_PAYMENTS = Symbol('DEMO_PAYMENTS');
 export const JWT = Symbol('JWT');
 export const ROLES_KEY = 'roles';
 export const ALLOW_PENDING_MFA = 'allowPendingMfa';

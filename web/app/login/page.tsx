@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AuthCard } from '@/components/auth-card';
 import { RecoveryCodesPanel } from '@/components/recovery-codes';
 import { Button, ErrorBanner, Field, Input, useAction } from '@/components/ui';
@@ -30,6 +30,7 @@ export default function LoginPage() {
         footer={<>New merchant? <Link className="text-brand-700 underline" href="/register">Create an account</Link></>}
       >
         <ErrorBanner error={error} />
+        <DemoPayment />
         <CredentialsForm
           busy={busy}
           onSubmit={async (email, password) => {
@@ -131,5 +132,34 @@ function ChallengeForm({ busy, onSubmit, onBack }: { busy: boolean; onSubmit: (p
         <button type="button" className="text-slate-600 underline" onClick={onBack}>Back</button>
       </div>
     </form>
+  );
+}
+
+/** Shown only when the API has demo payments enabled (test mode): starts a Rs 1 test payment with no account. */
+function DemoPayment() {
+  const router = useRouter();
+  const [enabled, setEnabled] = useState(false);
+  const { busy, error, run } = useAction();
+  useEffect(() => {
+    api.get<{ enabled: boolean }>('/public/demo-payment', { token: null }).then((r) => setEnabled(!!r.enabled)).catch(() => setEnabled(false));
+  }, []);
+  if (!enabled) return null;
+  return (
+    <div className="mb-5 rounded-lg border border-brand-100 bg-brand-50 p-3">
+      <p className="text-sm font-medium text-slate-800">Just want to see a payment?</p>
+      <p className="mt-1 text-xs text-slate-600">Make a Rs 1 test payment. No account needed, and no real money moves.</p>
+      <ErrorBanner error={error} />
+      <Button
+        type="button"
+        busy={busy}
+        className="mt-3 w-full"
+        onClick={async () => {
+          const r = await run(() => api.post<{ token: string }>('/public/demo-payment', {}, { token: null }));
+          if (r?.token) router.push(`/pay/${encodeURIComponent(r.token)}`);
+        }}
+      >
+        Try a Rs 1 test payment
+      </Button>
+    </div>
   );
 }

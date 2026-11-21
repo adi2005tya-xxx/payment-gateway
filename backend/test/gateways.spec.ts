@@ -218,6 +218,17 @@ describe('Razorpay adapter', () => {
       await expect(p.requests.checkoutParams('nope')).rejects.toMatchObject({ code: 'NOT_FOUND' });
     });
 
+    it('demo payment: no account needed, fixed Rs 1, one reusable demo merchant that cannot be logged into', async () => {
+      const p = createPlatform(ctx.db, rp, ctx.security);
+      const a = await p.demo.createDemoPayment();
+      const b = await p.demo.createDemoPayment();
+      expect(a.token).not.toBe(b.token);
+      expect(await p.requests.checkoutParams(a.token)).toMatchObject({ provider: 'razorpay', amountMinor: 100, status: 'PENDING', merchantName: 'Demo Traders' });
+      const merchants = await ctx.db.query<any>(`SELECT 1 FROM users WHERE email='demo-merchant@demo.invalid'`);
+      expect(merchants).toHaveLength(1);
+      await expect(p.auth.login('demo-merchant@demo.invalid', 'disabled')).rejects.toBeTruthy();
+    });
+
     it('a customer paying the wrong amount is held for review, not credited', async () => {
       const p = createPlatform(ctx.db, rp, ctx.security);
       const c = { ...ctx, p } as Ctx;

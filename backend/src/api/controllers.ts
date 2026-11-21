@@ -6,7 +6,7 @@ import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import { JwtService } from '@nestjs/jwt';
 import { z, ZodError, ZodType } from 'zod';
 import * as QRCode from 'qrcode';
-import { AllowPendingMfa, AuthGuard, AuthUser, hashPassword, JWT, PLATFORM, RATE_LIMITS, Roles, StepUp, validatePasswordStrength } from '../auth/auth';
+import { AllowPendingMfa, AuthGuard, DEMO_PAYMENTS, AuthUser, hashPassword, JWT, PLATFORM, RATE_LIMITS, Roles, StepUp, validatePasswordStrength } from '../auth/auth';
 import { DomainError, TransientError } from '../common/errors';
 import { Platform } from '../platform';
 import { SandboxProvider } from '../provider/sandbox.provider';
@@ -32,7 +32,21 @@ export class ErrorFilter implements ExceptionFilter {
 // ------------------------------------------------------------------ auth + public
 @Controller()
 export class PublicController {
-  constructor(@Inject(PLATFORM) private readonly p: Platform, @Inject(JWT) private readonly jwt: JwtService) {}
+  constructor(@Inject(PLATFORM) private readonly p: Platform, @Inject(JWT) private readonly jwt: JwtService, @Inject(DEMO_PAYMENTS) private readonly demoEnabled: boolean) {}
+
+  /** Whether the "try a test payment" button should be shown. */
+  @Get('public/demo-payment')
+  demoStatus() {
+    return { enabled: this.demoEnabled && this.p.provider.isSandbox };
+  }
+
+  /** No-login Rs 1 TEST payment against the built-in demo merchant. Disabled unless DEMO_PAYMENTS_ENABLED=true, and never with a non-test provider. */
+  @Post('public/demo-payment')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  async demoPayment() {
+    if (!this.demoEnabled || !this.p.provider.isSandbox) throw new DomainError('NOT_FOUND', 'Not found', 404);
+    return this.p.demo.createDemoPayment();
+  }
 
   @Post('auth/register')
   @Throttle({ default: { limit: () => RATE_LIMITS.auth, ttl: 60_000 } })

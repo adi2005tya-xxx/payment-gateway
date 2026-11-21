@@ -4,7 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import helmet from 'helmet';
 import { AdminController, AuthController, ErrorFilter, MerchantController, PublicController } from './api/controllers';
-import { AuthGuard, JWT, PLATFORM, RATE_LIMITS } from './auth/auth';
+import { AuthGuard, DEMO_PAYMENTS, JWT, PLATFORM, RATE_LIMITS } from './auth/auth';
 import { Platform } from './platform';
 
 export interface AppDeps {
@@ -13,10 +13,12 @@ export interface AppDeps {
   rateLimits?: Partial<typeof RATE_LIMITS>;
   /** Browser origin allowed to call the API. */
   corsOrigin?: string;
+  /** Enables POST /public/demo-payment (no-login Rs 1 test payment). Off unless explicitly enabled. */
+  demoPayments?: boolean;
 }
 
 /** Builds the Nest app around an already-constructed Platform (so tests can inject an in-memory DB). */
-export async function createApp({ platform, jwtSecret, rateLimits, corsOrigin }: AppDeps): Promise<INestApplication> {
+export async function createApp({ platform, jwtSecret, rateLimits, corsOrigin, demoPayments }: AppDeps): Promise<INestApplication> {
   Object.assign(RATE_LIMITS, { auth: 10, mfa: 10, recovery: 3, global: 120, ingest: 60 }, rateLimits);
 
   @Module({
@@ -24,6 +26,7 @@ export async function createApp({ platform, jwtSecret, rateLimits, corsOrigin }:
     controllers: [PublicController, AuthController, MerchantController, AdminController],
     providers: [
       { provide: PLATFORM, useValue: platform },
+      { provide: DEMO_PAYMENTS, useValue: !!demoPayments },
       { provide: JWT, useValue: new JwtService({ secret: jwtSecret, signOptions: {} }) },
       AuthGuard,
       { provide: APP_GUARD, useClass: ThrottlerGuard },

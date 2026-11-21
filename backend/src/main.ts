@@ -61,7 +61,7 @@ async function main() {
     await db.query(`INSERT INTO users(email, password_hash, role) VALUES ($1,$2,'ADMIN') ON CONFLICT (email) DO NOTHING`, [e, await hashPassword(process.env.BOOTSTRAP_ADMIN_PASSWORD)]);
   }
 
-  const app = await createApp({ platform, jwtSecret: cfg.JWT_SECRET, rateLimits: { auth: cfg.RATE_LIMIT_AUTH_PER_MIN, mfa: cfg.RATE_LIMIT_MFA_PER_MIN }, corsOrigin: cfg.WEB_ORIGIN || undefined });
+  const app = await createApp({ platform, jwtSecret: cfg.JWT_SECRET, rateLimits: { auth: cfg.RATE_LIMIT_AUTH_PER_MIN, mfa: cfg.RATE_LIMIT_MFA_PER_MIN }, corsOrigin: cfg.WEB_ORIGIN || undefined, demoPayments: cfg.DEMO_PAYMENTS_ENABLED === 'true' });
   await app.listen(cfg.PORT);
   console.log(`Gateway API on :${cfg.PORT} [${cfg.PAYMENT_MODE.toUpperCase()} - SIMULATED MONEY ONLY]`);
 

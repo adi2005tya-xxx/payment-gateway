@@ -1,4 +1,5 @@
 import { Db } from './db/db';
+import { DemoPaymentsService } from './payments/demo.service';
 import { AuditService } from './audit/audit.service';
 import { JobHandler, JobsService } from './jobs/jobs.service';
 import { LedgerService } from './ledger/ledger.service';
@@ -74,6 +75,7 @@ export function createPlatform(db: Db, provider: PaymentProvider, security: Secu
     complete_refund: (p) => refunds.complete(p.refundId),
   };
 
-  return { db, provider, audit, ledger, jobs, merchants, requests, verification, payouts, refunds, reconciliation, auth, mfa, recovery, notifications, alerts, monitor, ingest, mailbox, alertTemplates, devices, collections, handlers };
+  const demo = new DemoPaymentsService(db, merchants, requests);
+  return { demo, db, provider, audit, ledger, jobs, merchants, requests, verification, payouts, refunds, reconciliation, auth, mfa, recovery, notifications, alerts, monitor, ingest, mailbox, alertTemplates, devices, collections, handlers };
 }
 export type Platform = ReturnType<typeof createPlatform>;

@@ -68,6 +68,8 @@ const schema = z.object({
   /** Slack-compatible incoming webhook (or any JSON endpoint) for critical/warning alerts. */
   ALERT_WEBHOOK_URL: z.string().default(''),
   ALERT_WEBHOOK_SECRET: z.string().default(''),
+  /** Enables the no-login Rs 1 "try a test payment" button (test mode only). Off by default. */
+  DEMO_PAYMENTS_ENABLED: z.enum(['true', 'false']).default('false'),
   RATE_LIMIT_AUTH_PER_MIN: z.coerce.number().int().min(1).default(10),
   RATE_LIMIT_MFA_PER_MIN: z.coerce.number().int().min(1).default(10),
 });
